@@ -1,5 +1,7 @@
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
+    `maven-publish`
+    id("org.ajoberstar.grgit") version "4.1.0"
 }
 
 repositories {
@@ -86,6 +88,18 @@ kotlin {
         }
         val windowsMain by getting {
             dependsOn(nativeMain)
+        }
+    }
+}
+
+group = "org.cru.mobile.fork.antlr-kotlin"
+version = "${version}_${grgit.log { includes = listOf("HEAD") }.size}"
+publishing {
+    repositories {
+        maven {
+            name = "cruGlobalMavenRepository"
+            setUrl("https://cruglobal.jfrog.io/artifactory/maven-cru-mobile-forks-local/")
+            credentials(PasswordCredentials::class)
         }
     }
 }
