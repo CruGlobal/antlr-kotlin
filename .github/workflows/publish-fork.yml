@@ -2,9 +2,9 @@ name: Publish Fork
 
 on:
   push:
-    branches: ['build/.*']
+    branches: ['build/*']
   pull_request:
-    branches: ['build/.*']
+    branches: ['build/*']
 
 jobs:
   cancel-previous:
