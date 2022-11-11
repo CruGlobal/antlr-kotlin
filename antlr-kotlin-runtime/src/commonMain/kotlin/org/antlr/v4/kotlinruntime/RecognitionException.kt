@@ -16,7 +16,7 @@ import org.antlr.v4.kotlinruntime.misc.IntervalSet
  */
 open class RecognitionException(val recognizer: Recognizer<*, *>?,
                                 open val inputStream: IntStream,
-                                val ctx: ParserRuleContext?, override val message: String? = null) : RuntimeException() {
+                                val ctx: ParserRuleContext?, message: String? = null) : RuntimeException(message) {
     /** The [Recognizer] where this exception originated.  */
     /**
      * Gets the [Recognizer] where this exception occurred.
