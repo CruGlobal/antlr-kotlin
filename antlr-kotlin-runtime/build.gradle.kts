@@ -1,7 +1,7 @@
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
     `maven-publish`
-    id("org.ajoberstar.grgit") version "4.1.0"
+    alias(libs.plugins.grgit)
 }
 
 repositories {
