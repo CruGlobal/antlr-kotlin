@@ -22,10 +22,9 @@ import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
 import org.gradle.api.file.SourceDirectorySet;
 import org.gradle.api.tasks.*;
-import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
-import org.gradle.api.tasks.incremental.InputFileDetails;
 import org.gradle.process.internal.worker.WorkerProcessFactory;
 import org.gradle.util.GFileUtils;
+import org.gradle.work.InputChanges;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -193,29 +192,18 @@ public class AntlrKotlinTask extends SourceTask {
     }
 
     @TaskAction
-    public void execute(IncrementalTaskInputs inputs) {
+    public void execute(InputChanges inputs) {
         final Set<File> grammarFiles = new HashSet<File>();
         final Set<File> sourceFiles = getSource().getFiles();
         final AtomicBoolean cleanRebuild = new AtomicBoolean();
-        inputs.outOfDate(
-                new Action<InputFileDetails>() {
-                    public void execute(InputFileDetails details) {
-                        File input = details.getFile();
-                        if (sourceFiles.contains(input)) {
-                            grammarFiles.add(input);
-                        } else {
-                            // classpath change?
-                            cleanRebuild.set(true);
-                        }
-                    }
-                }
-        );
-        inputs.removed(new Action<InputFileDetails>() {
-            @Override
-            public void execute(InputFileDetails details) {
-                if (details.isRemoved()) {
+        inputs.getFileChanges(getSource()).forEach(change -> {
+            switch (change.getChangeType()) {
+                case ADDED:
+                case MODIFIED:
+                    grammarFiles.add(change.getFile());
+                    break;
+                case REMOVED:
                     cleanRebuild.set(true);
-                }
             }
         });
         if (cleanRebuild.get()) {
