@@ -17,25 +17,28 @@
 package com.strumenta.antlrkotlin.gradleplugin;
 
 import com.strumenta.antlrkotlin.gradleplugin.internal.*;
-import org.gradle.api.Action;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
+import org.gradle.api.file.FileType;
 import org.gradle.api.file.SourceDirectorySet;
 import org.gradle.api.tasks.*;
-import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
-import org.gradle.api.tasks.incremental.InputFileDetails;
+import org.gradle.internal.file.Deleter;
 import org.gradle.process.internal.worker.WorkerProcessFactory;
-import org.gradle.util.GFileUtils;
+import org.gradle.work.ChangeType;
+import org.gradle.work.FileChange;
+import org.gradle.work.InputChanges;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.Callable;
 
 /**
  * Generates parsers from Antlr grammars.
@@ -57,6 +60,7 @@ public class AntlrKotlinTask extends SourceTask {
     private String maxHeapSize;
     private String packageName;
     private SourceDirectorySet sourceDirectorySet;
+    private final FileCollection stableSources = getProject().files((Callable<Object>) this::getSource);
 
     /**
      * Specifies that all rules call {@code traceIn}/{@code traceOut}.
@@ -193,34 +197,30 @@ public class AntlrKotlinTask extends SourceTask {
     }
 
     @TaskAction
-    public void execute(IncrementalTaskInputs inputs) {
-        final Set<File> grammarFiles = new HashSet<File>();
-        final Set<File> sourceFiles = getSource().getFiles();
-        final AtomicBoolean cleanRebuild = new AtomicBoolean();
-        inputs.outOfDate(
-                new Action<InputFileDetails>() {
-                    public void execute(InputFileDetails details) {
-                        File input = details.getFile();
-                        if (sourceFiles.contains(input)) {
-                            grammarFiles.add(input);
-                        } else {
-                            // classpath change?
-                            cleanRebuild.set(true);
-                        }
+    public void execute(InputChanges inputChanges) {
+        final Set<File> grammarFiles = new HashSet<>();
+        FileCollection stableSources = getStableSources();
+        if (inputChanges.isIncremental()) {
+            boolean rebuildRequired = false;
+            for (FileChange fileChange : inputChanges.getFileChanges(stableSources)) {
+                if (fileChange.getFileType() == FileType.FILE) {
+                    if (fileChange.getChangeType() == ChangeType.REMOVED) {
+                        rebuildRequired = true;
+                        break;
                     }
-                }
-        );
-        inputs.removed(new Action<InputFileDetails>() {
-            @Override
-            public void execute(InputFileDetails details) {
-                if (details.isRemoved()) {
-                    cleanRebuild.set(true);
+                    grammarFiles.add(fileChange.getFile());
                 }
             }
-        });
-        if (cleanRebuild.get()) {
-            GFileUtils.deleteDirectory(outputDirectory);
-            grammarFiles.addAll(sourceFiles);
+            if (rebuildRequired) {
+                try {
+                    getDeleter().ensureEmptyDirectory(outputDirectory);
+                } catch (IOException ex) {
+                    throw new UncheckedIOException(ex);
+                }
+                grammarFiles.addAll(stableSources.getFiles());
+            }
+        } else {
+            grammarFiles.addAll(stableSources.getFiles());
         }
 
         AntlrWorkerManager manager = new AntlrWorkerManager();
@@ -288,5 +288,23 @@ public class AntlrKotlinTask extends SourceTask {
     @PathSensitive(PathSensitivity.RELATIVE)
     public FileTree getSource() {
         return super.getSource();
+    }
+
+    /**
+     * The sources for incremental change detection.
+     *
+     * @since 6.0
+     */
+    @SkipWhenEmpty
+    @IgnoreEmptyDirectories
+    @PathSensitive(PathSensitivity.RELATIVE)
+    @InputFiles
+    protected FileCollection getStableSources() {
+        return stableSources;
+    }
+
+    @Inject
+    protected Deleter getDeleter() {
+        throw new UnsupportedOperationException("Decorator takes care of injection");
     }
 }
